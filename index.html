@@ -261,8 +261,9 @@ summary{cursor:pointer;font-size:13.5px;color:var(--teal);font-weight:500;margin
     <details class="settings-block" id="settingsDetails">
       <summary>Impostazioni avanzate</summary>
       <div class="grid">
-        <label>Numero massimo di articoli (10–200)
-          <input type="number" id="limit" min="10" max="200" value="100">
+        <label>Numero massimo di articoli da valutare (10–300)
+          <input type="number" id="limit" min="10" max="300" value="100" oninput="updateTimeEstimate()">
+          <span class="note" id="timeEstimate" style="margin-top:4px;"></span>
         </label>
         <label>Email NCBI (opzionale)
           <input type="email" id="email" placeholder="nome@unito.it">
@@ -325,12 +326,23 @@ let articles = [];
     const mn = document.getElementById("modeNote");
     if(mn) mn.textContent = "Le impostazioni, inclusa la chiave, restano salvate solo nel tuo browser (mai condivise con altri o con chi ha creato questa pagina) e vengono inviate unicamente ad api.anthropic.com per le tue richieste.";
     loadPersistedSettings();
+    updateTimeEstimate();
     ["email","apiKey","anthropicKey","limit"].forEach(id=>{
       const el2 = document.getElementById(id);
       if(el2) el2.addEventListener("change", persistSettings);
     });
   });
 })();
+
+function updateTimeEstimate(){
+  const limit = Math.max(10, Math.min(300, parseInt($("limit")?.value,10) || 100));
+  const batches = Math.ceil(limit / 10);
+  const lowSec = batches * 2.5 + limit * 0.05;
+  const highSec = batches * 5 + limit * 0.15;
+  const fmt = s => s < 60 ? Math.round(s) + " sec" : (s/60).toFixed(1) + " min";
+  const el = $("timeEstimate");
+  if(el) el.textContent = `Tempo stimato per la valutazione: circa ${fmt(lowSec)}–${fmt(highSec)}.`;
+}
 
 function loadPersistedSettings(){
   try{
@@ -474,7 +486,7 @@ async function runSearchAndScreen(){
   settings.email = $("email").value.trim();
   settings.apiKey = $("apiKey").value.trim();
   settings.anthropicKey = $("anthropicKey").value.trim();
-  const limit = Math.max(10, Math.min(200, parseInt($("limit").value,10) || 100));
+  const limit = Math.max(10, Math.min(300, parseInt($("limit").value,10) || 100));
 
   setLoading("runBtn","runSpin",true);
   $("errBox2").innerHTML = "";
@@ -517,6 +529,8 @@ async function runSearchAndScreen(){
     });
 
     showProgress(100, "Fatto");
+    articles.__count = count;
+    articles.__translation = res.querytranslation;
     renderResults(articles, count, res.querytranslation);
     hideProgressSoon();
   }catch(e){
@@ -574,19 +588,17 @@ function tierFor(score){
   return "esclusi";
 }
 
-async function scoreAll(list){
-  const batchSize = 6;
-  const topic = $("topic").value.trim() || $("query").value.trim();
-  const sys = "Sei un revisore clinico che valuta la pertinenza e la qualità metodologica di articoli scientifici rispetto a un obiettivo di ricerca dato. Per ciascun articolo assegna un punteggio intero da 0 a 10 (10 = massima pertinenza e solidità per l'obiettivo, 0 = del tutto irrilevante) e una giustificazione breve in italiano (massimo 20 parole). Se l'abstract non è disponibile, valuta in base al solo titolo e segnalalo nella giustificazione. Rispondi SOLO con un array JSON valido, senza backtick e senza testo aggiuntivo, nel formato esatto: [{\"pmid\":\"...\",\"punteggio\":n,\"giustificazione\":\"...\"}]";
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
-  for(let i=0; i<list.length; i+=batchSize){
-    const batch = list.slice(i, i+batchSize);
-    const payload = batch.map(a => ({
-      pmid: a.pmid,
-      titolo: a.title,
-      abstract: (a.abstract || "(nessun abstract disponibile)").slice(0, 1800)
-    }));
-    const userMsg = `Obiettivo di ricerca: ${topic}\n\nArticoli da valutare (JSON):\n${JSON.stringify(payload)}`;
+async function scoreBatchWithRetry(batch, sys, topic, maxAttempts=4){
+  const payload = batch.map(a => ({
+    pmid: a.pmid,
+    titolo: a.title,
+    abstract: (a.abstract || "(nessun abstract disponibile)").slice(0, 1800)
+  }));
+  const userMsg = `Obiettivo di ricerca: ${topic}\n\nArticoli da valutare (JSON):\n${JSON.stringify(payload)}`;
+
+  for(let attempt=1; attempt<=maxAttempts; attempt++){
     try{
       const text = await askClaude([{ role:"user", content:userMsg }], sys);
       const arr = parseJSON(text);
@@ -599,15 +611,67 @@ async function scoreAll(list){
           art.tier = tierFor(art.score);
         }
       });
+      // eventuali articoli del lotto non presenti nella risposta: considerali falliti e riprova
+      const missing = batch.filter(a => a.tier === null);
+      if(missing.length && attempt < maxAttempts){
+        await sleep(800 * attempt);
+        continue;
+      }
+      return;
     }catch(e){
-      batch.forEach(a=>{
-        a.score = null;
-        a.giustificazione = "Valutazione non riuscita per questo lotto.";
-        a.tier = "errore";
-      });
+      if(attempt === maxAttempts){
+        batch.forEach(a=>{
+          if(a.tier === null){
+            a.score = null;
+            a.giustificazione = "Valutazione non riuscita dopo alcuni tentativi (possibile limite di richieste). Riprova con il pulsante qui sotto.";
+            a.tier = "errore";
+          }
+        });
+        return;
+      }
+      // attesa progressiva: utile soprattutto contro limiti di richieste al minuto (HTTP 429)
+      await sleep(1200 * attempt);
     }
-    showProgress(40 + Math.round(55 * (i + batch.length) / list.length), `Valuto la pertinenza (${Math.min(i+batch.length, list.length)}/${list.length})…`);
   }
+}
+
+async function scoreAll(list){
+  const batchSize = 10;
+  const topic = $("topic").value.trim() || $("query").value.trim();
+  const sys = "Sei un revisore clinico che valuta la pertinenza e la qualità metodologica di articoli scientifici rispetto a un obiettivo di ricerca dato. Per ciascun articolo assegna un punteggio intero da 0 a 10 (10 = massima pertinenza e solidità per l'obiettivo, 0 = del tutto irrilevante) e una giustificazione breve in italiano (massimo 20 parole). Se l'abstract non è disponibile, valuta in base al solo titolo e segnalalo nella giustificazione. Rispondi SOLO con un array JSON valido, senza backtick e senza testo aggiuntivo, nel formato esatto: [{\"pmid\":\"...\",\"punteggio\":n,\"giustificazione\":\"...\"}]";
+
+  for(let i=0; i<list.length; i+=batchSize){
+    const batch = list.slice(i, i+batchSize);
+    await scoreBatchWithRetry(batch, sys, topic);
+    // piccola pausa tra un lotto e il successivo per non saturare i limiti di richieste al minuto
+    await sleep(350);
+    showProgress(40 + Math.round(50 * (i + batch.length) / list.length), `Valuto la pertinenza (${Math.min(i+batch.length, list.length)}/${list.length})…`);
+  }
+
+  // di default, per l'export vengono spuntati solo gli articoli Selezionati (punteggio ≥7):
+  // così PDF/CSV contengono da subito solo quelli interessanti, salvo modifiche manuali dell'utente
+  list.forEach(a => { a.include = (a.tier === "selezionati"); });
+}
+
+async function rescoreFailed(){
+  const failed = articles.filter(a => a.tier === "errore");
+  if(!failed.length){ toast("Nessun articolo da rivalutare"); return; }
+  const topic = $("topic").value.trim() || $("query").value.trim();
+  const sys = "Sei un revisore clinico che valuta la pertinenza e la qualità metodologica di articoli scientifici rispetto a un obiettivo di ricerca dato. Per ciascun articolo assegna un punteggio intero da 0 a 10 (10 = massima pertinenza e solidità per l'obiettivo, 0 = del tutto irrilevante) e una giustificazione breve in italiano (massimo 20 parole). Se l'abstract non è disponibile, valuta in base al solo titolo e segnalalo nella giustificazione. Rispondi SOLO con un array JSON valido, senza backtick e senza testo aggiuntivo, nel formato esatto: [{\"pmid\":\"...\",\"punteggio\":n,\"giustificazione\":\"...\"}]";
+  failed.forEach(a => a.tier = null);
+  showProgress(5, `Rivaluto ${failed.length} articoli…`);
+  $("progress").style.display = "block";
+  const batchSize = 10;
+  for(let i=0; i<failed.length; i+=batchSize){
+    const batch = failed.slice(i, i+batchSize);
+    await scoreBatchWithRetry(batch, sys, topic);
+    await sleep(350);
+    showProgress(Math.round(100 * (i+batch.length) / failed.length), `Rivaluto (${Math.min(i+batch.length, failed.length)}/${failed.length})…`);
+  }
+  failed.forEach(a => { if(a.tier === "selezionati") a.include = true; });
+  hideProgressSoon();
+  renderResults(articles, articles.__count, articles.__translation);
+  toast("Rivalutazione completata");
 }
 
 /* ---------- rendering ---------- */
@@ -618,6 +682,9 @@ function renderResults(list, count, translation){
   $("meta").innerHTML = `${(count||0).toLocaleString('it-IT')} <small>articoli totali su PubMed · analizzati i primi ${list.length}</small>`;
   if(translation){
     $("meta").innerHTML += `<div class="translation">Interpretazione PubMed: <span class="mono">${esc(translation)}</span></div>`;
+  }
+  if(count > list.length * 1.5 && list.length > 0){
+    $("meta").innerHTML += `<p class="note" style="margin-top:8px;">PubMed ha trovato molti più articoli (${count.toLocaleString('it-IT')}) di quanti ne siano stati valutati (${list.length}): grazie all'ordinamento per rilevanza, i più pertinenti dovrebbero comunque essere tra questi. Se vuoi coprirli tutti, alza il limite nelle impostazioni avanzate (fino a 300) oppure restringi la stringa di ricerca.</p>`;
   }
 
   const sorted = [...list].sort((a,b) => (b.score ?? -1) - (a.score ?? -1));
@@ -630,6 +697,10 @@ function renderResults(list, count, translation){
     <span class="pill esc">Esclusi (&lt;4) — ${counts.esclusi}</span>
     ${counts.errore ? `<span class="pill err">Non valutati — ${counts.errore}</span>` : ""}
   `;
+  if(counts.errore){
+    $("tiersSummary").innerHTML += `<button class="ghost" style="margin-top:2px;" onclick="rescoreFailed()">Rivaluta i ${counts.errore} non valutati</button>`;
+  }
+  $("meta").innerHTML += `<p class="note" style="margin-top:8px;">Per l'esportazione (CSV/PDF) sono spuntati di default solo i <b>Selezionati</b>: aggiungi manualmente la spunta agli altri articoli che vuoi includere.</p>`;
 
   $("results").innerHTML = sorted.map((a, idx) => cardHTML(a, idx+1)).join("") || `<p class="note">Nessun articolo trovato con questa stringa di ricerca.</p>`;
 }
