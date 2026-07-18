@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schedario di ricerca — PubMed</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#F1EEE2;
+  --surface:#FBFAF4;
+  --ink:#20261F;
+  --ink-soft:#5B6358;
+  --rule:#D9D3BF;
+  --teal:#2B6E6A;
+  --teal-soft:#DCEAE7;
+  --amber:#B9812C;
+  --amber-soft:#F3E6CD;
+  --red:#9C4438;
+  --red-soft:#F1DAD4;
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'IBM Plex Sans',sans-serif;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'IBM Plex Mono',monospace;}
+
+.wrap{max-width:860px;margin:0 auto;padding:56px 24px 100px;}
+
+/* ---------- hero ---------- */
+.hero{margin-bottom:44px;}
+.hero .eyebrow{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--teal);margin-bottom:10px;
+}
+.hero h1{
+  font-family:'Source Serif 4',serif;
+  font-weight:700;
+  font-size:42px;
+  line-height:1.08;
+  margin:0 0 14px;
+  letter-spacing:-0.01em;
+}
+.hero p{
+  color:var(--ink-soft);
+  max-width:56ch;
+  font-size:16px;
+  margin:0;
+}
+
+/* ---------- cards ---------- */
+.card{
+  position:relative;
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-radius:3px;
+  padding:32px 28px 28px;
+  margin:0 0 40px;
+  box-shadow:0 1px 0 rgba(32,38,31,0.03);
+}
+.tab{
+  position:absolute;
+  top:-15px;left:24px;
+  background:var(--ink);
+  color:var(--surface);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:11px;letter-spacing:1.5px;
+  padding:4px 11px 3px;
+  border-radius:2px 2px 0 0;
+}
+.card h2{
+  font-family:'Source Serif 4',serif;
+  font-size:22px;font-weight:600;
+  margin:6px 0 18px;
+}
+
+label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:6px;}
+
+textarea, input[type="text"], input[type="email"], input[type="number"]{
+  width:100%;
+  font-family:'IBM Plex Sans',sans-serif;
+  font-size:14.5px;
+  color:var(--ink);
+  background:#fff;
+  border:1px solid var(--rule);
+  border-radius:2px;
+  padding:11px 13px;
+  resize:vertical;
+}
+textarea#topic{min-height:92px;}
+textarea#query{min-height:80px;font-family:'IBM Plex Mono',monospace;font-size:13.5px;}
+textarea:focus, input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-soft);}
+
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px;}
+
+button, .btnlink{
+  font-family:'IBM Plex Sans',sans-serif;
+  font-size:14px;font-weight:500;
+  border-radius:2px;
+  padding:11px 20px;
+  cursor:pointer;
+  border:1px solid var(--ink);
+  background:var(--ink);
+  color:var(--surface);
+  display:inline-flex;align-items:center;gap:8px;
+  text-decoration:none;
+}
+button.ghost, .btnlink.ghost{background:transparent;color:var(--ink);}
+button:disabled{opacity:0.55;cursor:not-allowed;}
+button:hover:not(:disabled){filter:brightness(1.08);}
+button:focus-visible, .btnlink:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible{
+  outline:2px solid var(--teal);outline-offset:2px;
+}
+
+.spinner{
+  width:13px;height:13px;border-radius:50%;
+  border:2px solid rgba(255,255,255,0.35);
+  border-top-color:#fff;
+  display:none;
+  animation:spin .7s linear infinite;
+}
+button.ghost .spinner{border-color:rgba(32,38,31,0.25);border-top-color:var(--ink);}
+.loading .spinner{display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none;}}
+
+.note{color:var(--ink-soft);font-size:13.5px;margin:12px 0 0;}
+.err{
+  margin-top:14px;padding:12px 14px;
+  background:var(--red-soft);color:var(--red);
+  border-radius:2px;font-size:13.5px;
+}
+
+details.settings-block{margin-bottom:6px;}
+summary{cursor:pointer;font-size:13.5px;color:var(--teal);font-weight:500;margin-bottom:4px;}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin:14px 0 6px;}
+@media (max-width:640px){.grid{grid-template-columns:1fr;}}
+
+/* ---------- progress ---------- */
+.progress{margin-top:18px;}
+.pbar{height:6px;background:var(--rule);border-radius:4px;overflow:hidden;}
+.pfill{height:100%;width:0%;background:var(--teal);transition:width .35s ease;}
+.pstat{font-size:12.5px;color:var(--ink-soft);margin-top:7px;font-family:'IBM Plex Mono',monospace;}
+
+/* ---------- results ---------- */
+.results-head h2{margin-bottom:6px;}
+.meta{color:var(--ink-soft);font-size:14px;margin-bottom:4px;}
+.meta small{color:var(--ink-soft);}
+.translation{font-size:12.5px;color:var(--ink-soft);margin-top:6px;word-break:break-word;}
+.tiers-summary{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px;}
+.pill{padding:5px 12px;border-radius:20px;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+.pill.sel{background:var(--teal-soft);color:var(--teal);}
+.pill.val{background:var(--amber-soft);color:var(--amber);}
+.pill.esc{background:var(--red-soft);color:var(--red);}
+.pill.err{background:#ece9dd;color:var(--ink-soft);}
+
+#results{margin-top:26px;display:flex;flex-direction:column;gap:22px;}
+
+.result{
+  position:relative;
+  background:#fff;
+  border:1px solid var(--rule);
+  border-left:4px solid var(--rule);
+  border-radius:2px;
+  padding:22px 22px 18px;
+}
+.result.tier-selezionati{border-left-color:var(--teal);}
+.result.tier-davalutare{border-left-color:var(--amber);}
+.result.tier-esclusi{border-left-color:var(--red);}
+.result .tab{background:var(--ink-soft);}
+
+.result-head{display:flex;gap:16px;align-items:flex-start;margin-top:4px;}
+.dial{
+  flex:none;width:48px;height:48px;border-radius:50%;
+  background:conic-gradient(var(--c,var(--ink-soft)) calc(var(--pct,0)*1%), var(--rule) 0);
+  display:flex;align-items:center;justify-content:center;
+}
+.dial-inner{
+  width:36px;height:36px;border-radius:50%;background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--c,var(--ink-soft));
+}
+.result-title{flex:1;min-width:0;}
+.result-title h3{font-family:'Source Serif 4',serif;font-size:17px;font-weight:600;margin:0 0 5px;line-height:1.3;}
+.result-title h3 a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--rule);}
+.result-title h3 a:hover{border-bottom-color:var(--ink);}
+.result-meta{font-size:12.5px;color:var(--ink-soft);}
+.tierlabel{
+  flex:none;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.5px;
+  padding:4px 9px;border-radius:20px;align-self:flex-start;
+}
+.tierlabel.t-selezionati{background:var(--teal-soft);color:var(--teal);}
+.tierlabel.t-davalutare{background:var(--amber-soft);color:var(--amber);}
+.tierlabel.t-esclusi{background:var(--red-soft);color:var(--red);}
+.tierlabel.t-errore{background:#ece9dd;color:var(--ink-soft);}
+
+.justif{font-size:13.5px;color:var(--ink-soft);margin:14px 0 6px;font-style:italic;}
+.result .abstract{margin-top:8px;font-size:13.5px;}
+.result .abstract summary{color:var(--ink-soft);}
+.result .abstract p{margin:8px 0 0;color:var(--ink);}
+.incl{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);margin-top:12px;cursor:pointer;}
+.incl input{width:auto;}
+
+@media (max-width:640px){
+  .hero h1{font-size:32px;}
+  .card{padding:26px 18px 22px;}
+  .result-head{flex-wrap:wrap;}
+  .tierlabel{order:3;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Ricerca bibliografica clinica</div>
+    <h1>Schedario di ricerca</h1>
+    <p>Descrivi l'argomento in linguaggio naturale, ottieni una stringa di ricerca PubMed ottimizzata, e lascia che l'assistente legga fino a 200 titoli e abstract assegnando un punteggio di pertinenza standardizzato da 0 a 10.</p>
+    <p class="note" id="envNote" style="margin-top:14px;"></p>
+  </header>
+
+  <section class="card" id="step1">
+    <div class="tab">01 — ARGOMENTO</div>
+    <h2>Descrivi l'argomento di ricerca</h2>
+    <label for="topic">Obiettivo, popolazione, intervento, confronto, outcome — scrivi come preferisci</label>
+    <textarea id="topic" placeholder="Es. Efficacia della terapia cognitivo-comportamentale nel ridurre i sintomi d'ansia in pazienti oncologici adulti, confrontata con il trattamento farmacologico standard."></textarea>
+    <div class="row">
+      <button id="genBtn" onclick="generateQuery()">
+        <span class="spinner" id="genSpin"></span>Genera stringa di ricerca
+      </button>
+    </div>
+    <div id="errBox1"></div>
+    <div id="genPanel" style="display:none;margin-top:22px;border-top:1px solid var(--rule);padding-top:20px;">
+      <label for="query">Stringa di ricerca PubMed (modificabile)</label>
+      <textarea id="query" class="mono"></textarea>
+      <p class="note" id="summary"></p>
+      <div class="row">
+        <button class="ghost" onclick="copyQuery()">Copia stringa</button>
+        <a class="btnlink ghost" id="pubmedLink" target="_blank" rel="noopener">Apri su PubMed ↗</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="step2">
+    <div class="tab">02 — RICERCA E VALUTAZIONE</div>
+    <h2>Interroga PubMed e valuta i risultati</h2>
+    <details class="settings-block" id="settingsDetails">
+      <summary>Impostazioni avanzate</summary>
+      <div class="grid">
+        <label>Numero massimo di articoli (10–200)
+          <input type="number" id="limit" min="10" max="200" value="100">
+        </label>
+        <label>Email NCBI (opzionale)
+          <input type="email" id="email" placeholder="nome@unito.it">
+        </label>
+        <label>API key NCBI (opzionale)
+          <input type="text" id="apiKey" placeholder="velocizza le richieste">
+        </label>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr;margin-top:2px;">
+        <label>API key Anthropic personale — <span class="mono" style="font-size:12px;">solo se apri questo file fuori da Claude</span>
+          <input type="text" id="anthropicKey" placeholder="sk-ant-…">
+        </label>
+      </div>
+      <p class="note" id="modeNote"></p>
+    </details>
+    <div class="row">
+      <button id="runBtn" onclick="runSearchAndScreen()">
+        <span class="spinner" id="runSpin"></span>Cerca su PubMed e valuta
+      </button>
+    </div>
+    <div class="progress" id="progress" style="display:none">
+      <div class="pbar"><div class="pfill" id="pfill"></div></div>
+      <div class="pstat" id="pstat"></div>
+    </div>
+    <div id="errBox2"></div>
+  </section>
+
+  <section class="card" id="resultsSection" style="display:none">
+    <div class="tab">03 — ELENCO</div>
+    <div class="results-head">
+      <h2>Articoli valutati</h2>
+      <div class="meta" id="meta"></div>
+      <div class="tiers-summary" id="tiersSummary"></div>
+      <div class="row">
+        <button class="ghost" onclick="exportCSV()">Esporta CSV</button>
+        <button class="ghost" onclick="exportRIS()">Esporta RIS (Zotero)</button>
+        <button class="ghost" id="pdfBtn" onclick="exportPDF()"><span class="spinner" id="pdfSpin"></span>Esporta PDF</button>
+      </div>
+    </div>
+    <div id="results"></div>
+  </section>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const TOOL = "SchedarioRicerca";
+const NCBI = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/";
+let settings = { email:"", apiKey:"", anthropicKey:"" };
+let articles = [];
+
+(function detectEnvironment(){
+  const inFrame = window.top !== window.self;
+  const msg = inFrame
+    ? "Stai probabilmente visualizzando questa pagina nell'anteprima di Claude: la generazione della stringa con l'AI funziona, ma la ricerca su PubMed sarà bloccata. Scarica il file e aprilo nel tuo browser, oppure usa il link ospitato online, per usarla davvero — a quel punto inserisci una tua API key Anthropic nelle impostazioni avanzate per continuare a usare l'AI."
+    : "Pagina aperta come sito autonomo: per usare la generazione AI della stringa e la valutazione degli abstract, inserisci una tua API key Anthropic personale nelle impostazioni avanzate del passo 2.";
+  window.addEventListener("DOMContentLoaded", ()=>{
+    const el = document.getElementById("envNote");
+    if(el) el.textContent = msg;
+    const mn = document.getElementById("modeNote");
+    if(mn) mn.textContent = "Le impostazioni, inclusa la chiave, restano salvate solo nel tuo browser (mai condivise con altri o con chi ha creato questa pagina) e vengono inviate unicamente ad api.anthropic.com per le tue richieste.";
+    loadPersistedSettings();
+    ["email","apiKey","anthropicKey","limit"].forEach(id=>{
+      const el2 = document.getElementById(id);
+      if(el2) el2.addEventListener("change", persistSettings);
+    });
+  });
+})();
+
+function loadPersistedSettings(){
+  try{
+    const raw = localStorage.getItem("schedarioSettings");
+    if(!raw) return;
+    const s = JSON.parse(raw);
+    if(s.email) $("email").value = s.email;
+    if(s.apiKey) $("apiKey").value = s.apiKey;
+    if(s.anthropicKey) $("anthropicKey").value = s.anthropicKey;
+    if(s.limit) $("limit").value = s.limit;
+  }catch(e){ /* localStorage non disponibile in questo contesto (es. anteprima Claude) */ }
+}
+
+function persistSettings(){
+  try{
+    localStorage.setItem("schedarioSettings", JSON.stringify({
+      email: $("email").value.trim(),
+      apiKey: $("apiKey").value.trim(),
+      anthropicKey: $("anthropicKey").value.trim(),
+      limit: $("limit").value
+    }));
+  }catch(e){ /* localStorage non disponibile in questo contesto */ }
+}
+
+function $(id){ return document.getElementById(id); }
+
+function esc(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+function toast(msg){
+  const t = document.createElement("div");
+  t.textContent = msg;
+  t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#20261F;color:#FBFAF4;padding:10px 18px;border-radius:3px;font-size:13.5px;font-family:'IBM Plex Sans',sans-serif;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.2);";
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2600);
+}
+
+function setLoading(btnId, spinId, on){
+  const btn = $(btnId);
+  btn.disabled = on;
+  btn.classList.toggle("loading", on);
+}
+
+function showProgress(pct, msg){
+  $("progress").style.display = "block";
+  $("pfill").style.width = pct + "%";
+  $("pstat").textContent = msg;
+}
+function hideProgressSoon(){
+  setTimeout(()=>{ $("progress").style.display = "none"; }, 900);
+}
+
+/* ---------- AI calls ---------- */
+async function askClaude(messages, system){
+  const headers = { "Content-Type": "application/json" };
+  if(settings.anthropicKey){
+    // Chiamata diretta dal browser con chiave personale (necessaria quando l'app
+    // gira fuori dall'anteprima di Claude, es. file aperto localmente).
+    headers["x-api-key"] = settings.anthropicKey;
+    headers["anthropic-version"] = "2023-06-01";
+    headers["anthropic-dangerous-direct-browser-access"] = "true";
+  }
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      system,
+      messages
+    })
+  });
+  if(!resp.ok){
+    let detail = "";
+    try{ detail = (await resp.json()).error?.message || ""; }catch(_e){}
+    throw new Error(`stato ${resp.status}${detail ? " — " + detail : ""}`);
+  }
+  const data = await resp.json();
+  return (data.content || []).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+}
+
+function parseJSON(text){
+  const t = text.trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```\s*$/,"").trim();
+  return JSON.parse(t);
+}
+
+/* ---------- step 1: query generation ---------- */
+async function generateQuery(){
+  const topic = $("topic").value.trim();
+  if(!topic){ toast("Descrivi prima l'argomento di ricerca"); return; }
+  settings.anthropicKey = $("anthropicKey").value.trim();
+  setLoading("genBtn","genSpin",true);
+  $("errBox1").innerHTML = "";
+  try{
+    const sys = "Sei un bibliotecario clinico esperto di ricerche bibliografiche su PubMed. Trasforma la descrizione dell'utente in una stringa di ricerca PubMed ottimizzata: individua i concetti principali, usa termini MeSH quando pertinenti insieme ai sinonimi testuali collegati in OR, unisci i concetti principali in AND, applica field tags corretti ([mesh], [tiab], [tw] ecc.) e, se utile, filtri di tipo di studio. La stringa deve poter essere incollata direttamente nella barra di ricerca di PubMed. Rispondi SOLO con JSON valido, senza backtick e senza testo aggiuntivo, nel formato esatto: {\"query\":\"...\",\"spiegazione\":\"breve spiegazione in italiano della logica della stringa, max 40 parole\"}";
+    const text = await askClaude([{ role:"user", content:"Argomento di ricerca: " + topic }], sys);
+    const j = parseJSON(text);
+    $("query").value = j.query || "";
+    $("summary").textContent = j.spiegazione || "";
+    $("pubmedLink").href = "https://pubmed.ncbi.nlm.nih.gov/?term=" + encodeURIComponent(j.query || "");
+    $("genPanel").style.display = "block";
+    $("genPanel").scrollIntoView({behavior:"smooth", block:"nearest"});
+  }catch(e){
+    $("genPanel").style.display = "block";
+    $("errBox1").innerHTML = `<div class="err"><b>Non sono riuscito a generare la stringa.</b> Errore: ${esc(e.message)}. Puoi scriverla a mano qui sotto.</div>`;
+  }finally{
+    setLoading("genBtn","genSpin",false);
+  }
+}
+
+function copyQuery(){
+  const q = $("query").value;
+  if(!q){ toast("Nessuna stringa da copiare"); return; }
+  navigator.clipboard.writeText(q).then(()=>toast("Stringa copiata"));
+}
+
+/* ---------- step 2: search + fetch + score ---------- */
+function withAuth(url){
+  const u = new URL(url);
+  u.searchParams.set("tool", TOOL);
+  if(settings.email) u.searchParams.set("email", settings.email);
+  if(settings.apiKey) u.searchParams.set("api_key", settings.apiKey);
+  return u.toString();
+}
+
+async function runSearchAndScreen(){
+  const q = $("query").value.trim();
+  if(!q){ toast("Genera o scrivi prima una stringa di ricerca"); return; }
+  settings.email = $("email").value.trim();
+  settings.apiKey = $("apiKey").value.trim();
+  settings.anthropicKey = $("anthropicKey").value.trim();
+  const limit = Math.max(10, Math.min(200, parseInt($("limit").value,10) || 100));
+
+  setLoading("runBtn","runSpin",true);
+  $("errBox2").innerHTML = "";
+  $("resultsSection").style.display = "none";
+  showProgress(5, "Interrogo PubMed…");
+
+  try{
+    const sr = await fetch(withAuth(`${NCBI}esearch.fcgi?db=pubmed&retmode=json&sort=relevance&retmax=${limit}&term=${encodeURIComponent(q)}`));
+    if(!sr.ok) throw new Error("PubMed (esearch) ha risposto con stato " + sr.status);
+    const res = (await sr.json()).esearchresult || {};
+    const count = parseInt(res.count || "0", 10);
+    const ids = res.idlist || [];
+
+    if(!ids.length){
+      showProgress(100, "Nessun risultato");
+      renderResults([], count, res.querytranslation);
+      hideProgressSoon();
+      return;
+    }
+
+    showProgress(20, "Scarico titoli e abstract…");
+    articles = await fetchArticles(ids);
+
+    showProgress(40, `Valuto la pertinenza (0/${articles.length})…`);
+    await scoreAll(articles);
+
+    showProgress(100, "Fatto");
+    renderResults(articles, count, res.querytranslation);
+    hideProgressSoon();
+  }catch(e){
+    $("errBox2").innerHTML = `<div class="err"><b>Ricerca non riuscita.</b> Errore: ${esc(e.message)}. Può dipendere dalla rete o da un blocco verso NCBI — verifica la stringa o riprova.</div>`;
+    $("progress").style.display = "none";
+  }finally{
+    setLoading("runBtn","runSpin",false);
+  }
+}
+
+async function fetchArticles(ids){
+  const out = [];
+  const chunkSize = 100;
+  for(let i=0; i<ids.length; i+=chunkSize){
+    const chunk = ids.slice(i, i+chunkSize);
+    const url = withAuth(`${NCBI}efetch.fcgi?db=pubmed&rettype=abstract&retmode=xml&id=${chunk.join(",")}`);
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("PubMed (efetch) ha risposto con stato " + r.status);
+    const xmlText = await r.text();
+    const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+    doc.querySelectorAll("PubmedArticle").forEach(node => out.push(parseArticleNode(node)));
+  }
+  return out;
+}
+
+function parseArticleNode(node){
+  const pmid = node.querySelector("PMID")?.textContent || "";
+  const title = node.querySelector("ArticleTitle")?.textContent || "(senza titolo)";
+  const abstractParts = Array.from(node.querySelectorAll("AbstractText")).map(n=>{
+    const label = n.getAttribute("Label");
+    const txt = n.textContent || "";
+    return label ? `${label}: ${txt}` : txt;
+  });
+  const abstract = abstractParts.join(" ").trim();
+  const journal = node.querySelector("Journal ISOAbbreviation")?.textContent
+    || node.querySelector("Journal Title")?.textContent || "";
+  const year = node.querySelector("JournalIssue PubDate Year")?.textContent
+    || node.querySelector("PubDate MedlineDate")?.textContent || "";
+  const authorNodes = Array.from(node.querySelectorAll("AuthorList Author"));
+  const authorNames = authorNodes.slice(0,3).map(a=>{
+    const last = a.querySelector("LastName")?.textContent || "";
+    const init = a.querySelector("Initials")?.textContent || "";
+    if(last) return `${last} ${init}`.trim();
+    return a.querySelector("CollectiveName")?.textContent || "";
+  }).filter(Boolean);
+  const authors = authorNames.join(", ") + (authorNodes.length > 3 ? " et al." : "");
+  const doi = Array.from(node.querySelectorAll("ArticleId")).find(a=>a.getAttribute("IdType")==="doi")?.textContent || "";
+  return { pmid, title, abstract, journal, year, authors, doi, score:null, giustificazione:"", tier:null, include:true };
+}
+
+function tierFor(score){
+  if(score == null) return "errore";
+  if(score >= 7) return "selezionati";
+  if(score >= 4) return "davalutare";
+  return "esclusi";
+}
+
+async function scoreAll(list){
+  const batchSize = 6;
+  const topic = $("topic").value.trim() || $("query").value.trim();
+  const sys = "Sei un revisore clinico che valuta la pertinenza e la qualità metodologica di articoli scientifici rispetto a un obiettivo di ricerca dato. Per ciascun articolo assegna un punteggio intero da 0 a 10 (10 = massima pertinenza e solidità per l'obiettivo, 0 = del tutto irrilevante) e una giustificazione breve in italiano (massimo 20 parole). Se l'abstract non è disponibile, valuta in base al solo titolo e segnalalo nella giustificazione. Rispondi SOLO con un array JSON valido, senza backtick e senza testo aggiuntivo, nel formato esatto: [{\"pmid\":\"...\",\"punteggio\":n,\"giustificazione\":\"...\"}]";
+
+  for(let i=0; i<list.length; i+=batchSize){
+    const batch = list.slice(i, i+batchSize);
+    const payload = batch.map(a => ({
+      pmid: a.pmid,
+      titolo: a.title,
+      abstract: (a.abstract || "(nessun abstract disponibile)").slice(0, 1800)
+    }));
+    const userMsg = `Obiettivo di ricerca: ${topic}\n\nArticoli da valutare (JSON):\n${JSON.stringify(payload)}`;
+    try{
+      const text = await askClaude([{ role:"user", content:userMsg }], sys);
+      const arr = parseJSON(text);
+      arr.forEach(r=>{
+        const art = batch.find(a => a.pmid === String(r.pmid));
+        if(art){
+          const s = Math.round(Number(r.punteggio));
+          art.score = Number.isFinite(s) ? Math.max(0, Math.min(10, s)) : null;
+          art.giustificazione = r.giustificazione || "";
+          art.tier = tierFor(art.score);
+        }
+      });
+    }catch(e){
+      batch.forEach(a=>{
+        a.score = null;
+        a.giustificazione = "Valutazione non riuscita per questo lotto.";
+        a.tier = "errore";
+      });
+    }
+    showProgress(40 + Math.round(55 * (i + batch.length) / list.length), `Valuto la pertinenza (${Math.min(i+batch.length, list.length)}/${list.length})…`);
+  }
+}
+
+/* ---------- rendering ---------- */
+function renderResults(list, count, translation){
+  $("resultsSection").style.display = "block";
+  $("resultsSection").scrollIntoView({behavior:"smooth", block:"start"});
+
+  $("meta").innerHTML = `${(count||0).toLocaleString('it-IT')} <small>articoli totali su PubMed · analizzati i primi ${list.length}</small>`;
+  if(translation){
+    $("meta").innerHTML += `<div class="translation">Interpretazione PubMed: <span class="mono">${esc(translation)}</span></div>`;
+  }
+
+  const sorted = [...list].sort((a,b) => (b.score ?? -1) - (a.score ?? -1));
+  const counts = { selezionati:0, davalutare:0, esclusi:0, errore:0 };
+  sorted.forEach(a => counts[a.tier || "errore"]++);
+
+  $("tiersSummary").innerHTML = `
+    <span class="pill sel">Selezionati (≥7) — ${counts.selezionati}</span>
+    <span class="pill val">Da valutare (4–6) — ${counts.davalutare}</span>
+    <span class="pill esc">Esclusi (&lt;4) — ${counts.esclusi}</span>
+    ${counts.errore ? `<span class="pill err">Non valutati — ${counts.errore}</span>` : ""}
+  `;
+
+  $("results").innerHTML = sorted.map((a, idx) => cardHTML(a, idx+1)).join("") || `<p class="note">Nessun articolo trovato con questa stringa di ricerca.</p>`;
+}
+
+function cardHTML(a, rank){
+  const pct = a.score == null ? 0 : a.score * 10;
+  const color = a.score == null ? "var(--ink-soft)" : a.score >= 7 ? "var(--teal)" : a.score >= 4 ? "var(--amber)" : "var(--red)";
+  const tierLabel = { selezionati:"Selezionato", davalutare:"Da valutare", esclusi:"Escluso", errore:"Non valutato" }[a.tier] || "—";
+  return `
+  <article class="result tier-${a.tier}" data-pmid="${esc(a.pmid)}">
+    <div class="tab">N. ${String(rank).padStart(3,'0')}</div>
+    <div class="result-head">
+      <div class="dial" style="--pct:${pct};--c:${color}">
+        <div class="dial-inner" style="--c:${color}">${a.score ?? "–"}</div>
+      </div>
+      <div class="result-title">
+        <h3><a href="https://pubmed.ncbi.nlm.nih.gov/${esc(a.pmid)}/" target="_blank" rel="noopener">${esc(a.title)}</a></h3>
+        <div class="result-meta">${esc(a.authors || "—")} · <span class="mono">${esc(a.journal || "")}</span>${a.year ? " · " + esc(a.year) : ""} · <span class="mono">PMID ${esc(a.pmid)}</span></div>
+      </div>
+      <span class="tierlabel t-${a.tier}">${tierLabel}</span>
+    </div>
+    <p class="justif">${esc(a.giustificazione || "")}</p>
+    <details class="abstract"><summary>Abstract</summary><p>${esc(a.abstract || "Abstract non disponibile.")}</p></details>
+    <label class="incl"><input type="checkbox" class="inclChk" data-pmid="${esc(a.pmid)}" ${a.include !== false ? "checked" : ""}> Includi nell'esportazione</label>
+  </article>`;
+}
+
+document.addEventListener("change", (e)=>{
+  if(e.target.classList.contains("inclChk")){
+    const pmid = e.target.dataset.pmid;
+    const art = articles.find(x => x.pmid === pmid);
+    if(art) art.include = e.target.checked;
+  }
+});
+
+/* ---------- open-access link lookup ---------- */
+async function getDownloadLink(article){
+  if(article.doi){
+    try{
+      const email = settings.email || "ricerca@unito.it";
+      const r = await fetch(`https://api.unpaywall.org/v2/${encodeURIComponent(article.doi)}?email=${encodeURIComponent(email)}`);
+      if(r.ok){
+        const j = await r.json();
+        const loc = j.best_oa_location;
+        const url = loc?.url_for_pdf || loc?.url;
+        if(url) return { url, oa:true };
+      }
+    }catch(e){ /* silenzioso: si ricade sul link PubMed */ }
+  }
+  return { url: `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`, oa:false };
+}
+
+async function withConcurrency(items, limit, worker){
+  const results = new Array(items.length);
+  let i = 0;
+  async function run(){
+    while(i < items.length){
+      const idx = i++;
+      results[idx] = await worker(items[idx], idx);
+    }
+  }
+  await Promise.all(new Array(Math.min(limit, items.length)).fill(0).map(run));
+  return results;
+}
+
+/* ---------- PDF report ---------- */
+async function exportPDF(){
+  const items = articles.filter(a => a.include !== false).sort((a,b)=>(b.score??-1)-(a.score??-1));
+  if(!items.length){ toast("Nessun articolo selezionato per il report"); return; }
+  if(!window.jspdf){ toast("Libreria PDF non disponibile: controlla la connessione"); return; }
+
+  $("pdfBtn").disabled = true;
+  $("pdfBtn").classList.add("loading");
+  try{
+    showProgress(5, "Cerco i link di accesso aperto…");
+    const links = await withConcurrency(items, 4, async (a)=> getDownloadLink(a));
+
+    showProgress(60, "Compongo il PDF…");
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:"pt", format:"a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const marginX = 48;
+    let y = 60;
+
+    const ink = [32,38,31], soft=[91,99,88], teal=[43,110,106], amber=[185,129,44], red=[156,68,56];
+    const colorFor = (a) => a.score==null ? soft : a.score>=7 ? teal : a.score>=4 ? amber : red;
+
+    function ensureSpace(h){
+      if(y + h > pageH - 56){
+        doc.addPage();
+        y = 60;
+      }
+    }
+
+    // header
+    doc.setFont("helvetica","bold"); doc.setFontSize(18); doc.setTextColor(...ink);
+    doc.text("Schedario di ricerca — Report bibliografico", marginX, y); y += 22;
+    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(...soft);
+    const topic = $("topic").value.trim();
+    const query = $("query").value.trim();
+    doc.text(`Generato il ${new Date().toLocaleDateString('it-IT')}`, marginX, y); y += 16;
+    if(topic){
+      const lines = doc.splitTextToSize(`Argomento: ${topic}`, pageW - marginX*2);
+      doc.text(lines, marginX, y); y += lines.length*13 + 4;
+    }
+    if(query){
+      doc.setFont("courier","normal"); doc.setFontSize(8.5);
+      const qlines = doc.splitTextToSize(`Query PubMed: ${query}`, pageW - marginX*2);
+      doc.text(qlines, marginX, y); y += qlines.length*11 + 6;
+    }
+    doc.setDrawColor(217,211,191); doc.line(marginX, y, pageW-marginX, y); y += 20;
+
+    items.forEach((a, idx)=>{
+      const link = links[idx];
+      ensureSpace(90);
+
+      doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(...soft);
+      doc.text(`N. ${String(idx+1).padStart(3,'0')}`, marginX, y); y += 14;
+
+      doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(...ink);
+      const titleLines = doc.splitTextToSize(a.title, pageW - marginX*2);
+      doc.text(titleLines, marginX, y); y += titleLines.length*15 + 3;
+
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...soft);
+      const metaLine = `${a.authors || "—"} · ${a.journal || ""}${a.year ? " · " + a.year : ""} · PMID ${a.pmid}`;
+      const metaLines = doc.splitTextToSize(metaLine, pageW - marginX*2);
+      doc.text(metaLines, marginX, y); y += metaLines.length*12 + 5;
+
+      const c = colorFor(a);
+      doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(...c);
+      const tierLabel = { selezionati:"Selezionato", davalutare:"Da valutare", esclusi:"Escluso", errore:"Non valutato" }[a.tier] || "—";
+      doc.text(`Punteggio: ${a.score ?? "–"}/10 — ${tierLabel}`, marginX, y); y += 14;
+
+      if(a.giustificazione){
+        doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(...soft);
+        const jLines = doc.splitTextToSize(a.giustificazione, pageW - marginX*2);
+        ensureSpace(jLines.length*12 + 20);
+        doc.text(jLines, marginX, y); y += jLines.length*12 + 6;
+      }
+
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...teal);
+      const linkLabel = link.oa ? "Scarica il full text (accesso aperto)" : "Apri la scheda su PubMed";
+      doc.textWithLink(linkLabel, marginX, y, { url: link.url });
+      y += 20;
+
+      doc.setDrawColor(217,211,191); doc.line(marginX, y-8, pageW-marginX, y-8);
+      y += 4;
+    });
+
+    doc.save("report_bibliografico.pdf");
+    showProgress(100, "PDF pronto");
+    hideProgressSoon();
+  }catch(e){
+    toast("Errore nella generazione del PDF: " + e.message);
+    $("progress").style.display = "none";
+  }finally{
+    $("pdfBtn").disabled = false;
+    $("pdfBtn").classList.remove("loading");
+  }
+}
+function csvEscape(v){
+  v = String(v ?? "");
+  if(/[",\n]/.test(v)) v = '"' + v.replace(/"/g,'""') + '"';
+  return v;
+}
+function downloadBlob(content, filename, type){
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+function exportCSV(){
+  const items = articles.filter(a => a.include !== false).sort((a,b)=>(b.score??-1)-(a.score??-1));
+  if(!items.length){ toast("Nessun articolo selezionato per l'export"); return; }
+  const rows = [["PMID","Punteggio","Fascia","Titolo","Autori","Rivista","Anno","DOI","Giustificazione","Link"]];
+  items.forEach(a=>{
+    rows.push([a.pmid, a.score ?? "", a.tier || "", a.title, a.authors, a.journal, a.year, a.doi,
+      a.giustificazione, `https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/`]);
+  });
+  const csv = rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
+  downloadBlob(csv, "ricerca_bibliografica.csv", "text/csv;charset=utf-8");
+}
+
+function exportRIS(){
+  const items = articles.filter(a => a.include !== false).sort((a,b)=>(b.score??-1)-(a.score??-1));
+  if(!items.length){ toast("Nessun articolo selezionato per l'export"); return; }
+  const ris = items.map(a=>{
+    const lines = ["TY  - JOUR", `TI  - ${a.title}`];
+    (a.authors || "").split(",").map(s=>s.trim()).filter(s=>s && s !== "et al.").forEach(au => lines.push(`AU  - ${au}`));
+    if(a.journal) lines.push(`JO  - ${a.journal}`);
+    if(a.year) lines.push(`PY  - ${a.year}`);
+    if(a.doi) lines.push(`DO  - ${a.doi}`);
+    if(a.abstract) lines.push(`AB  - ${a.abstract.replace(/\n/g," ")}`);
+    lines.push(`UR  - https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/`);
+    lines.push(`N1  - Punteggio pertinenza: ${a.score ?? "n/d"}/10. ${a.giustificazione || ""}`);
+    lines.push("ER  - ");
+    return lines.join("\n");
+  }).join("\n\n");
+  downloadBlob(ris, "ricerca_bibliografica.ris", "application/x-research-info-systems");
+}
+</script>
+</body>
+</html>
