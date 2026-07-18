@@ -209,6 +209,11 @@ summary{cursor:pointer;font-size:13.5px;color:var(--teal);font-weight:500;margin
 .result .abstract p{margin:8px 0 0;color:var(--ink);}
 .incl{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);margin-top:12px;cursor:pointer;}
 .incl input{width:auto;}
+.dllink{
+  display:inline-block;margin-top:12px;font-size:13px;font-weight:500;
+  color:var(--teal);text-decoration:none;border-bottom:1px solid transparent;
+}
+.dllink:hover{border-bottom-color:var(--teal);}
 
 @media (max-width:640px){
   .hero h1{font-size:32px;}
@@ -382,7 +387,7 @@ function hideProgressSoon(){
 }
 
 /* ---------- AI calls ---------- */
-async function askClaude(messages, system){
+async function askClaude(messages, system, maxTokens=1000){
   const headers = { "Content-Type": "application/json" };
   if(settings.anthropicKey){
     // Chiamata diretta dal browser con chiave personale (necessaria quando l'app
@@ -396,7 +401,7 @@ async function askClaude(messages, system){
     headers,
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 1000,
+      max_tokens: maxTokens,
       system,
       messages
     })
@@ -423,8 +428,17 @@ async function generateQuery(){
   setLoading("genBtn","genSpin",true);
   $("errBox1").innerHTML = "";
   try{
-    const sys = "Sei un bibliotecario clinico esperto di ricerche bibliografiche su PubMed. Trasforma la descrizione dell'utente in una stringa di ricerca PubMed ottimizzata: individua i concetti principali, usa termini MeSH quando pertinenti insieme ai sinonimi testuali collegati in OR, unisci i concetti principali in AND, applica field tags corretti ([mesh], [tiab], [tw] ecc.) e, se utile, filtri di tipo di studio. La stringa deve poter essere incollata direttamente nella barra di ricerca di PubMed. Rispondi SOLO con JSON valido, senza backtick e senza testo aggiuntivo, nel formato esatto: {\"query\":\"...\",\"spiegazione\":\"breve spiegazione in italiano della logica della stringa, max 40 parole\"}";
-    const text = await askClaude([{ role:"user", content:"Argomento di ricerca: " + topic }], sys);
+    const sys = `Sei un bibliotecario clinico esperto di ricerche bibliografiche su PubMed, con un approccio deliberatamente ampio e critico: il tuo obiettivo primario è la SENSIBILITÀ (recall), non la precisione. È molto peggio perdere un articolo rilevante che restituirne qualcuno in più da scartare in fase di screening.
+
+Segui questo procedimento:
+1. Scomponi la richiesta nei suoi concetti clinici principali (patologia/condizione, intervento/procedura, popolazione, eventuale confronto). Non aggiungere concetti che l'utente non ha menzionato: se ha citato patologia + intervento, la stringa deve avere solo quei due blocchi in AND, non un terzo blocco inventato.
+2. Per ciascun concetto, elenca il maggior numero possibile di sinonimi, varianti ortografiche, acronimi (anche quelli meno diffusi), nomi di procedure correlate o storicamente usate per la stessa condizione, e il/i termine/i MeSH corrispondenti. Sii esaustivo: è meglio un sinonimo di troppo che uno mancante.
+3. Racchiudi OGNI concetto in una propria coppia di parentesi tonde, con tutti i suoi sinonimi in OR al suo interno. Non lasciare mai un operatore AND o OR fuori da una parentesi quando si combinano più di due termini: PubMed valuta gli operatori booleani rigorosamente da sinistra a destra senza precedenza implicita, quindi una struttura tipo "A OR B OR C AND D" senza parentesi complete restringe silenziosamente tutto ciò che precede l'AND, escludendo articoli pertinenti. Combina i blocchi tra loro con AND solo a livello più esterno, tra parentesi già chiuse: (blocco concetto 1) AND (blocco concetto 2).
+4. Prima di rispondere, rileggi la stringa che hai generato e verifica tu stesso, termine per termine, che ogni AND colleghi due gruppi interi tra parentesi e non un singolo termine isolato: se trovi un AND o OR non correttamente racchiuso, correggilo.
+5. Non aggiungere filtri restrittivi (data, tipo di studio, lingua, specie) a meno che l'utente li abbia esplicitamente richiesti: questi riducono la sensibilità.
+
+La stringa finale deve poter essere incollata direttamente nella barra di ricerca di PubMed. Rispondi SOLO con JSON valido, senza backtick e senza testo aggiuntivo, nel formato esatto: {"query":"...","spiegazione":"breve spiegazione in italiano dei concetti individuati e della logica booleana usata, max 50 parole"}`;
+    const text = await askClaude([{ role:"user", content:"Argomento di ricerca: " + topic }], sys, 1500);
     const j = parseJSON(text);
     $("query").value = j.query || "";
     $("summary").textContent = j.spiegazione || "";
@@ -486,6 +500,21 @@ async function runSearchAndScreen(){
 
     showProgress(40, `Valuto la pertinenza (0/${articles.length})…`);
     await scoreAll(articles);
+
+    const worthLinking = articles.filter(a => a.tier !== "esclusi");
+    showProgress(90, `Cerco i link per lo scaricamento (0/${worthLinking.length})…`);
+    let linked = 0;
+    await withConcurrency(worthLinking, 4, async (a)=>{
+      const link = await getDownloadLink(a);
+      a.downloadUrl = link.url;
+      a.downloadOA = link.oa;
+      linked++;
+      showProgress(90 + Math.round(9 * linked / worthLinking.length), `Cerco i link per lo scaricamento (${linked}/${worthLinking.length})…`);
+    });
+    articles.filter(a => a.tier === "esclusi").forEach(a=>{
+      a.downloadUrl = `https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/`;
+      a.downloadOA = false;
+    });
 
     showProgress(100, "Fatto");
     renderResults(articles, count, res.querytranslation);
@@ -624,6 +653,7 @@ function cardHTML(a, rank){
     </div>
     <p class="justif">${esc(a.giustificazione || "")}</p>
     <details class="abstract"><summary>Abstract</summary><p>${esc(a.abstract || "Abstract non disponibile.")}</p></details>
+    ${a.downloadUrl ? `<a class="dllink" href="${esc(a.downloadUrl)}" target="_blank" rel="noopener">${a.downloadOA ? "⬇ Scarica il full text (accesso aperto)" : "↗ Apri la scheda su PubMed"}</a>` : ""}
     <label class="incl"><input type="checkbox" class="inclChk" data-pmid="${esc(a.pmid)}" ${a.include !== false ? "checked" : ""}> Includi nell'esportazione</label>
   </article>`;
 }
@@ -675,8 +705,11 @@ async function exportPDF(){
   $("pdfBtn").disabled = true;
   $("pdfBtn").classList.add("loading");
   try{
-    showProgress(5, "Cerco i link di accesso aperto…");
-    const links = await withConcurrency(items, 4, async (a)=> getDownloadLink(a));
+    showProgress(5, "Verifico i link di accesso aperto…");
+    const links = await withConcurrency(items, 4, async (a)=>{
+      if(a.downloadUrl) return { url:a.downloadUrl, oa:!!a.downloadOA };
+      return getDownloadLink(a);
+    });
 
     showProgress(60, "Compongo il PDF…");
     const { jsPDF } = window.jspdf;
@@ -778,10 +811,10 @@ function downloadBlob(content, filename, type){
 function exportCSV(){
   const items = articles.filter(a => a.include !== false).sort((a,b)=>(b.score??-1)-(a.score??-1));
   if(!items.length){ toast("Nessun articolo selezionato per l'export"); return; }
-  const rows = [["PMID","Punteggio","Fascia","Titolo","Autori","Rivista","Anno","DOI","Giustificazione","Link"]];
+  const rows = [["PMID","Punteggio","Fascia","Titolo","Autori","Rivista","Anno","DOI","Giustificazione","Link PubMed","Link per scaricare","Accesso aperto"]];
   items.forEach(a=>{
     rows.push([a.pmid, a.score ?? "", a.tier || "", a.title, a.authors, a.journal, a.year, a.doi,
-      a.giustificazione, `https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/`]);
+      a.giustificazione, `https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/`, a.downloadUrl || "", a.downloadOA ? "sì" : "no"]);
   });
   const csv = rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
   downloadBlob(csv, "ricerca_bibliografica.csv", "text/csv;charset=utf-8");
